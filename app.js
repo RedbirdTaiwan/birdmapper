@@ -3,6 +3,7 @@ const STORAGE_KEY = "birdmapper-records-v1";
 const state = {
   map: null,
   activeMarker: null,
+  locationMarker: null,
   records: [],
   editingId: null,
 };
@@ -27,6 +28,18 @@ const activeMarkerIcon = L.divIcon({
   iconSize: [28, 40],
   iconAnchor: [14, 40],
   popupAnchor: [0, -34],
+});
+
+const locationMarkerIcon = L.divIcon({
+  className: "location-marker",
+  html: `
+    <svg viewBox="0 0 26 26" aria-hidden="true">
+      <circle cx="13" cy="13" r="11" fill="rgba(33, 68, 52, 0.18)"/>
+      <circle cx="13" cy="13" r="6.5" fill="#214434" stroke="#fffdf7" stroke-width="2"/>
+    </svg>
+  `,
+  iconSize: [26, 26],
+  iconAnchor: [13, 13],
 });
 
 initialize();
@@ -100,6 +113,7 @@ function locateUser() {
         position.coords.longitude
       );
 
+      updateLocationMarker(latlng);
       state.map.setView(latlng, Math.max(state.map.getZoom(), 16));
       locateBtn.disabled = false;
       statusText.textContent = "已定位到目前位置";
@@ -130,6 +144,15 @@ function locateUser() {
       maximumAge: 0,
     }
   );
+}
+
+function updateLocationMarker(latlng) {
+  if (state.locationMarker) {
+    state.locationMarker.setLatLng(latlng);
+    return;
+  }
+
+  state.locationMarker = L.marker(latlng, { icon: locationMarkerIcon }).addTo(state.map);
 }
 
 function loadRecords() {
@@ -170,7 +193,6 @@ function openEditorAt(latlng, record = null) {
     closeButton: true,
     autoClose: false,
     closeOnClick: false,
-    minWidth: 310,
   });
 
   state.activeMarker.openPopup();
@@ -193,17 +215,15 @@ function getDefaultRecord(latlng) {
 
 function buildPopupHtml(record) {
   const title = state.editingId ? "編輯觀測資料" : "新增觀測資料";
-  const coordinateText = `${record.lat}, ${record.lng}`;
 
   return `
     <div class="popup-form">
       <strong>${title}</strong>
       <div class="popup-grid">
         <input id="dateInput" type="date" value="${escapeAttribute(record.date)}" required>
-          <input id="timeInput" type="time" value="${escapeAttribute(record.time)}" required>
-          <input id="coordInput" type="text" value="${escapeAttribute(coordinateText)}" readonly>
-          <input id="speciesInput" type="text" value="${escapeAttribute(record.species)}" maxlength="100" placeholder="請輸入鳥種名稱" required>
-          <input id="quantityInput" type="number" value="${escapeAttribute(String(record.quantity))}" min="1" step="1" placeholder="請輸入整數" required>
+        <input id="timeInput" type="time" value="${escapeAttribute(record.time)}" required>
+        <input id="speciesInput" type="text" value="${escapeAttribute(record.species)}" maxlength="100" placeholder="鳥名" required>
+        <input id="quantityInput" type="number" value="${escapeAttribute(String(record.quantity))}" min="1" step="1" placeholder="數量" required>
       </div>
       <div class="error-text" id="formError"></div>
       <div class="popup-actions">
@@ -313,9 +333,9 @@ function renderTable() {
         <tr>
           <td>${escapeHtml(record.date)}</td>
           <td>${escapeHtml(record.time)}</td>
-          <td>${escapeHtml(`${record.lat}, ${record.lng}`)}</td>
           <td>${escapeHtml(record.species)}</td>
           <td>${escapeHtml(String(record.quantity))}</td>
+          <td>${escapeHtml(`${record.lat}, ${record.lng}`)}</td>
           <td>
             <div class="row-actions">
               <button type="button" data-action="edit" data-id="${record.id}">編輯</button>
