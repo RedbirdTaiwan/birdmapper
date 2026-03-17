@@ -236,8 +236,9 @@ button.danger:hover {
 
 .table-wrap {
   flex: 1;
-  overflow-x: auto;
+  overflow-x: hidden;
   overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 table {
@@ -255,6 +256,9 @@ td {
 }
 
 th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
   color: var(--accent-strong);
   background: rgba(242, 234, 210, 0.65);
   font-size: 0.95rem;
@@ -289,7 +293,8 @@ tbody tr:hover {
   padding: 18px 16px calc(12px + env(safe-area-inset-bottom));
   border-radius: 28px 28px 0 0;
   border-bottom: 0;
-  max-height: min(42vh, 380px);
+  height: 25vh;
+  max-height: 25vh;
   display: flex;
   flex-direction: column;
 }
