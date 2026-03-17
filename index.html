@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>鳥類觀測記錄地圖</title>
+  <link rel="stylesheet" href="assets/leaflet/leaflet.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <main class="page">
+    <section class="map-card">
+      <div class="map-overlay">
+        <div class="overlay-group">
+          <div class="status" id="statusText">尚未建立 marker</div>
+          <div class="count mobile-count" id="recordCount">0 筆</div>
+        </div>
+        <div class="overlay-group overlay-actions">
+          <button id="locateBtn" type="button">定位</button>
+          <button id="exportBtn" type="button">下載</button>
+          <button id="clearAllBtn" type="button" class="danger">清空資料</button>
+        </div>
+      </div>
+      <div id="map" aria-label="衛星地圖"></div>
+    </section>
+
+    <section class="table-card">
+      <div class="table-head">
+        <div>
+          <h2>觀測資料</h2>
+          <p>點選地圖新增記錄，已儲存資料可在下方編輯或刪除。</p>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>日期</th>
+              <th>時間</th>
+              <th>座標</th>
+              <th>鳥種</th>
+              <th>數量</th>
+              <th>操作</th>
+            </tr>
+          </thead>
+          <tbody id="recordsBody">
+            <tr class="empty-row">
+              <td colspan="6">目前沒有資料，請先點選地圖新增記錄。</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </section>
+  </main>
+
+  <script src="assets/leaflet/leaflet.js"></script>
+  <script src="assets/xlsx/xlsx.full.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
