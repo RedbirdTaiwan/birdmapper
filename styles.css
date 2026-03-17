@@ -236,7 +236,7 @@ button.danger:hover {
 
 .table-wrap {
   flex: 1;
-  overflow-x: hidden;
+  overflow-x: auto;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
 }
