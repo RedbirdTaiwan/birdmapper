@@ -4,6 +4,8 @@ const state = {
   map: null,
   activeMarker: null,
   locationMarker: null,
+  orthophotoLayer: null,
+  studySitesLayer: null,
   records: [],
   editingId: null,
 };
@@ -54,19 +56,259 @@ function initialize() {
 function initializeMap() {
   state.map = L.map("map", {
     zoomControl: true,
+    maxZoom: 21,
   }).setView([23.7, 121], 7);
 
   L.tileLayer(
     "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
     {
       attribution: "&copy; Esri, Maxar, Earthstar Geographics",
-      maxZoom: 18,
+      maxZoom: 21,
     }
   ).addTo(state.map);
+
+  loadOrthophotos();
+  loadStudySitesLayer();
 
   state.map.on("click", (event) => {
     openEditorAt(event.latlng);
   });
+}
+
+function loadOrthophotos() {
+  const images = normalizeOrthophotoImages(window.ORTHOPHOTO_IMAGES);
+  if (images.length === 0) {
+    return;
+  }
+
+  createOrthophotoPane();
+
+  const overlays = images
+    .map((image) => createOrthophotoOverlay(image))
+    .filter(Boolean);
+
+  if (overlays.length === 0) {
+    return;
+  }
+
+  state.orthophotoLayer = L.layerGroup(overlays).addTo(state.map);
+}
+
+function normalizeOrthophotoImages(images) {
+  if (Array.isArray(images)) {
+    return images;
+  }
+
+  return images ? [images] : [];
+}
+
+function createOrthophotoPane() {
+  if (state.map.getPane("orthophotoPane")) {
+    return;
+  }
+
+  const pane = state.map.createPane("orthophotoPane");
+  pane.style.zIndex = 300;
+  pane.style.pointerEvents = "none";
+}
+
+function createOrthophotoOverlay(image) {
+  const west = Number(image.west);
+  const south = Number(image.south);
+  const east = Number(image.east);
+  const north = Number(image.north);
+
+  if (![west, south, east, north].every(Number.isFinite)) {
+    console.warn("Invalid orthophoto bounds:", image);
+    return null;
+  }
+
+  const bounds = L.latLngBounds(
+    [south, west],
+    [north, east]
+  );
+
+  return L.imageOverlay(image.path, bounds, {
+    pane: "orthophotoPane",
+    interactive: false,
+    opacity: 1,
+  });
+}
+
+function loadStudySitesLayer() {
+  if (typeof window.STUDY_SITES_KML !== "string" || !window.STUDY_SITES_KML.trim()) {
+    console.warn("Study sites KML is not available.");
+    return;
+  }
+
+  try {
+    const layer = createStudySitesLayer(window.STUDY_SITES_KML);
+    if (!layer) {
+      return;
+    }
+
+    state.studySitesLayer = layer.addTo(state.map);
+
+    const bounds = state.studySitesLayer.getBounds();
+    if (bounds.isValid()) {
+      state.map.fitBounds(bounds.pad(0.08), { maxZoom: 18 });
+    }
+
+    statusText.textContent = "研究樣區已載入，可點地圖新增記錄";
+  } catch (error) {
+    console.error("Failed to load study sites:", error);
+    statusText.textContent = "研究樣區載入失敗";
+  }
+}
+
+function createStudySitesLayer(kmlText) {
+  const parser = new DOMParser();
+  const xml = parser.parseFromString(kmlText, "application/xml");
+  const parseError = xml.querySelector("parsererror");
+  if (parseError) {
+    throw new Error("Invalid KML document.");
+  }
+
+  const placemarks = getElementsByLocalName(xml, "Placemark");
+  const layers = placemarks
+    .map((placemark) => createPlacemarkLayer(placemark))
+    .filter(Boolean);
+
+  return layers.length > 0 ? L.featureGroup(layers) : null;
+}
+
+function createPlacemarkLayer(placemark) {
+  const name = getDirectChildText(placemark, "name") || "未命名樣區";
+  const description = getDirectChildText(placemark, "description");
+  const styleUrl = getDirectChildText(placemark, "styleUrl");
+  const groupName = getAncestorFolderNames(placemark).join(" / ");
+  //const popupHtml = buildStudySitePopup(name, groupName, description);
+  const popupHtml = buildStudySitePopup(name);
+
+  const point = getFirstDescendantByLocalName(placemark, "Point");
+  if (point) {
+    const coordinateText = getFirstDescendantText(point, "coordinates");
+    const latlng = parseSingleCoordinate(coordinateText);
+    if (!latlng) {
+      return null;
+    }
+
+    return L.circleMarker(latlng, {
+      radius: 5,
+      color: "#214434",
+      weight: 2,
+      fillColor: "#e8f3c8",
+      fillOpacity: 0.95,
+    }).bindPopup(popupHtml);
+  }
+
+  const polygon = getFirstDescendantByLocalName(placemark, "Polygon");
+  if (polygon) {
+    const rings = getElementsByLocalName(polygon, "outerBoundaryIs")
+      .map((boundary) => parseCoordinateRing(getFirstDescendantText(boundary, "coordinates")))
+      .filter((ring) => ring.length >= 3);
+
+    if (rings.length === 0) {
+      return null;
+    }
+
+    return L.polygon(rings, getStudySitePolygonStyle(styleUrl, name)).bindPopup(popupHtml);
+  }
+
+  return null;
+}
+
+function buildStudySitePopup(name, groupName, description) {
+  const parts = [`<strong>${escapeHtml(name)}</strong>`];
+
+  if (groupName) {
+    parts.push(`<div>${escapeHtml(groupName)}</div>`);
+  }
+
+  if (description) {
+    parts.push(`<div>${escapeHtml(description)}</div>`);
+  }
+
+  return parts.join("");
+}
+
+function getPolygonStyle(styleUrl, name) {
+  const value = `${styleUrl ?? ""} ${name}`.toLowerCase();
+  if (value.includes("無毒") || value.includes("00ffff")) {
+    return {
+      color: "#57e36d",
+      weight: 2,
+      fill: false,
+    };
+  }
+
+  return {
+    color: "#7f3f98",
+    weight: 2,
+    fill: false,
+  };
+}
+
+function getElementsByLocalName(root, localName) {
+  return Array.from(root.getElementsByTagNameNS("*", localName));
+}
+
+function getFirstDescendantByLocalName(root, localName) {
+  return getElementsByLocalName(root, localName)[0] ?? null;
+}
+
+function getDirectChildText(root, localName) {
+  const child = Array.from(root.children).find((element) => element.localName === localName);
+  return child?.textContent?.trim() ?? "";
+}
+
+function getFirstDescendantText(root, localName) {
+  return getFirstDescendantByLocalName(root, localName)?.textContent?.trim() ?? "";
+}
+
+function getAncestorFolderNames(node) {
+  const names = [];
+  let current = node.parentElement;
+
+  while (current) {
+    if (current.localName === "Folder") {
+      const name = getDirectChildText(current, "name");
+      if (name) {
+        names.unshift(name);
+      }
+    }
+
+    current = current.parentElement;
+  }
+
+  return names;
+}
+
+function parseSingleCoordinate(coordinatesText) {
+  const [lng, lat] = splitCoordinateValues(coordinatesText);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return null;
+  }
+
+  return L.latLng(lat, lng);
+}
+
+function parseCoordinateRing(coordinatesText) {
+  return coordinatesText
+    .trim()
+    .split(/\s+/)
+    .map((coordinateText) => {
+      const [lng, lat] = splitCoordinateValues(coordinateText);
+      return Number.isFinite(lat) && Number.isFinite(lng) ? [lat, lng] : null;
+    })
+    .filter(Boolean);
+}
+
+function splitCoordinateValues(coordinateText) {
+  return coordinateText
+    .split(",")
+    .slice(0, 2)
+    .map((value) => Number(value.trim()));
 }
 
 function bindGlobalActions() {
@@ -449,4 +691,59 @@ function escapeHtml(value) {
 
 function escapeAttribute(value) {
   return escapeHtml(value ?? "");
+}
+
+function getPolygonStyle(styleUrl, name) {
+  const value = `${styleUrl ?? ""} ${name}`.toLowerCase();
+
+  if (value.includes("aa00ff")) {
+    return {
+      color: "#57e36d",
+      weight: 2,
+      fill: false,
+    };
+  }
+
+  if (value.includes("00ffff")) {
+    return {
+      color: "#f2e85c",
+      weight: 2,
+      fill: false,
+    };
+  }
+
+  return {
+    color: "#7f3f98",
+    weight: 2,
+    fill: false,
+  };
+}
+
+function getStudySitePolygonStyle(styleUrl, name) {
+  const value = `${styleUrl ?? ""} ${name}`.toLowerCase();
+
+  if (
+    value.includes("無毒") ||
+    (value.includes("#m_ylw-pushpin") && !value.includes("#msn_ylw-pushpin"))
+  ) {
+    return {
+      color: "#57e36d",
+      weight: 2,
+      fill: false,
+    };
+  }
+
+  if (value.includes("慣行") || value.includes("#msn_ylw-pushpin")) {
+    return {
+      color: "#f2e85c",
+      weight: 2,
+      fill: false,
+    };
+  }
+
+  return {
+    color: "#7f3f98",
+    weight: 2,
+    fill: false,
+  };
 }
